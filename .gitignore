@@ -1,3 +1,7 @@
+*
+!*.*
+!*/
+
 # Prerequisites
 *.d
 
@@ -30,3 +34,39 @@
 *.exe
 *.out
 *.app
+
+!*README*
+!*configure*
+!*Makefile*
+!*makefile*
+!*Gemfile*
+*.org
+*.copy
+*.old
+*.pdf
+*.PDF
+*.png
+*.PNG
+*.jpg
+*.JPG
+*.jpeg
+*.JPEG
+*.tiff
+*.TIFF
+*.Tiff
+*.tif
+*.TIF
+*.Tif
+*.eps
+*.EPS
+*.root
+*.dat
+*.DAT
+*.ps
+*.PS
+*.eps
+*.EPS
+*.table
+*.out
+*.txt
+*.log
