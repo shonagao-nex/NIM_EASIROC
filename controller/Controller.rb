@@ -176,31 +176,33 @@ class CommandDispatcher
       puts sprintf("ch %2d: Input DAC >> %.2f V",chInt,rd_madc)
     elsif chInt == 64
       puts "Reading monitor ADC..."
-      if /\.yml$/ !~ filename
-        filename << '.yml'
-      end
+#      if /\.yml$/ !~ filename
+#        filename << '.yml'
+#      end
 
-      status_filename = 'status/' + filename
-      if (!filename.include?("temp") && File.exist?(status_filename))
-        puts "#{status_filename} already exsit."
-        status_filename="status/temp_#{Time.now.to_i}.yml"
-      end
-      puts "Save as #{status_filename}."
+      status_filename = filename
+#      if (!filename.include?("temp") && File.exist?(status_filename))
+#        puts "#{status_filename} already exsit."
+#        status_filename="status/temp_#{Time.now.to_i}.yml"
+#      end
+      puts "Save as #{status_filename}"
 
       status = {}
       status[:HV] = @vmeEasiroc.readMadc(3).round(3)
       status[:current] = @vmeEasiroc.readMadc(4).round(3)
+      status[:Temp1] = @vmeEasiroc.readMadc(5).round(3)
+      status[:Temp2] = @vmeEasiroc.readMadc(0).round(3)
       status[:InputDAC]=[]
       ch = 0..31
       ch.each{|eachnum|
         @vmeEasiroc.setCh(eachnum)
         status[:InputDAC] << @vmeEasiroc.readMadc(1).round(3)
       }
-      ch = 32..63
-      ch.each{|eachnum|
-        @vmeEasiroc.setCh(eachnum-32)
-        status[:InputDAC] << @vmeEasiroc.readMadc(2).round(3)
-      }
+#      ch = 32..63
+#      ch.each{|eachnum|
+#        @vmeEasiroc.setCh(eachnum-32)
+#        status[:InputDAC] << @vmeEasiroc.readMadc(2).round(3)
+#      }
       puts status
       File.write(status_filename, status.to_yaml)
     else
@@ -210,7 +212,7 @@ class CommandDispatcher
     @vmeEasiroc.setCh(32)
   end
 
-  def checkHV(vollim=80.0, curlim=20.0, repeat=3)
+  def checkHV(vollim=62.0, curlim=20.0, repeat=3)
     @vmeEasiroc.sendMadcControl
 
     vollim = vollim.to_f
@@ -427,7 +429,8 @@ class CommandDispatcher
               break
             end
           end
-          puts sprintf("!!!!Readout finished!!!! Total number of events: %d, %d%", ievents, ievents.to_f/events*100)
+#          puts sprintf("!!!!Readout finished!!!! Total number of events: %d, %d%", ievents, ievents.to_f/events*100)
+          puts sprintf("!!!!Readout finished!!!! Total number of events: %d", ievents)
           readline_thread.kill
         end
       end
@@ -508,17 +511,6 @@ class CommandDispatcher
     slowcontrol
   end
 
-  def capture_output
-    begin
-      old_stdout = $stdout
-      $stdout = StringIO.new
-      yield
-      $stdout.string
-    ensure
-      $stdout = old_stdout
-    end
-  end
-
   def readroop
     puts "Start readroop (infinite monitor-mode loop). Type 'stop' to exit."
   
@@ -526,7 +518,7 @@ class CommandDispatcher
       # Initialization
       num_events = Queue.new
       send_stop = Queue.new
-      events = 10_000
+      events = 10000
       gpio_events = events + 100
       stop_requested = false
 
@@ -536,23 +528,13 @@ class CommandDispatcher
   
       puts "Start new DAQ loop at #{timestamp}"
       puts "Data file: #{data_filename}"
-      puts "Log file : #{log_filename}"
+#      puts "Log file : #{log_filename}"
   
-      # Output log file
-      File.open(log_filename, 'w') do |log|
-        log.puts "[statusHV]"
-        log.puts capture_output { statusHV }
+      statusInputDAC(64,log_filename)
   
-        log.puts "\n[statusTemp]"
-        log.puts capture_output { statusTemp }
-  
-        log.puts "\n[statusInputDAC]"
-        log.puts capture_output { statusInputDAC(64) }
-      end
-  
-      gpio_pid = spawn("python3 gpio_roop.py #{gpio_events}")
-      Process.detach(gpio_pid)
-      puts "Launched gpio_roop.py (PID=#{gpio_pid})"
+#      gpio_pid = spawn("python3 gpio_roop.py #{gpio_events}")
+#      Process.detach(gpio_pid)
+#      puts "Launched gpio_roop.py (PID=#{gpio_pid})"
  
       readline_thread = Thread.new do
         while buf_read = Readline.readline("DAQ is running... > ", true)
@@ -565,6 +547,7 @@ class CommandDispatcher
           when "stop"
             send_stop.push(true)
             stop_requested = true
+            puts "Stopping now....."
             break
           when "statusHV", "statusTemp", "statusInputDAC"
             dispatch(buf_read)
@@ -575,8 +558,13 @@ class CommandDispatcher
       end
   
       read_thread = Thread.new do
-        ievents = 0
         File.open(data_filename, 'wb') do |file|
+          ievents = 0
+          progress_bar ||= ProgressBar.create(
+            total: events,
+            format: '%p%% [%b>%i] %c %revent/s %e'
+          )
+
           @vmeEasiroc.readEvent(events) do |header, data|
             file.write(header[:header])
             file.write(data.pack('N*'))
@@ -584,12 +572,15 @@ class CommandDispatcher
             ievents += 1
             num_events.clear unless num_events.empty?
             num_events.push(ievents)
+
+            progress_bar.increment
   
             if !send_stop.empty?
               puts "DAQ stop is requested"
               break
             end
           end
+          progress_bar.finish
         end
       end
   
@@ -600,24 +591,22 @@ class CommandDispatcher
       readline_thread.kill if readline_thread.alive?
 
       puts "Stop DAQ #{data_filename} at #{timestamp}"
-      puts "Switching to a new run"
+      puts ""
 
-      sleep 3
+      sleep 1
 
-      is_alive = system("ps -p #{gpio_pid} > /dev/null")
-      if is_alive
-        puts "Killing gpio_roop.py..."
-        Process.kill("TERM", gpio_pid) rescue nil
-      end
+#      is_alive = system("ps -p #{gpio_pid} > /dev/null")
+#      if is_alive
+#        puts "Killing gpio_roop.py..."
+#        Process.kill("TERM", gpio_pid) rescue nil
+#      end
 
       slowcontrol
-      sleep 2
- 
       # break after "stop" command
       break if stop_requested
+      puts "Switching now, wait a moment"
+      sleep 10
     end
-  
-    puts "readroop finished."
   end
 
   def fit(filename="temp", *ch) 

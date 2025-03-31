@@ -371,7 +371,7 @@ class VmeEasiroc
       dac1 = higher8bit[0].getbyte(0).to_f
       dac2 = lower8bit[0].getbyte(0).to_f
       readDAC = dac1*256 + dac2
-      puts "readDAC=#{readDAC}" 
+#      puts "readDAC=#{readDAC}" 
 
       if ( data == 3 )
         read_madc = madcConst["HV"]*readDAC + madcConst["HVOffset"]
