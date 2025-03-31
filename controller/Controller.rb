@@ -18,7 +18,7 @@ class CommandDispatcher
     checkHV setInputDAC setRegister setThreshold 
     increaseHV decreaseHV initialCheck 
     muxControl slowcontrol standby fit drawScaler dsleep
-    read adc tdc scaler cd pwd mode reset help version timeStamp 
+    read readroop adc tdc scaler cd pwd mode reset help version timeStamp 
     exit quit progress stop makeError ) + DIRECT_COMMANDS.map(&:to_s)
 
   
@@ -508,6 +508,118 @@ class CommandDispatcher
     slowcontrol
   end
 
+  def capture_output
+    begin
+      old_stdout = $stdout
+      $stdout = StringIO.new
+      yield
+      $stdout.string
+    ensure
+      $stdout = old_stdout
+    end
+  end
+
+  def readroop
+    puts "Start readroop (infinite monitor-mode loop). Type 'stop' to exit."
+  
+    loop do
+      # Initialization
+      num_events = Queue.new
+      send_stop = Queue.new
+      events = 10_000
+      gpio_events = events + 100
+      stop_requested = false
+
+      timestamp = Time.now.strftime("%Y%m%d_%H%M%S")
+      data_filename = "data/run_#{timestamp}.dat"
+      log_filename  = "data/run_#{timestamp}.log"
+  
+      puts "Start new DAQ loop at #{timestamp}"
+      puts "Data file: #{data_filename}"
+      puts "Log file : #{log_filename}"
+  
+      # Output log file
+      File.open(log_filename, 'w') do |log|
+        log.puts "[statusHV]"
+        log.puts capture_output { statusHV }
+  
+        log.puts "\n[statusTemp]"
+        log.puts capture_output { statusTemp }
+  
+        log.puts "\n[statusInputDAC]"
+        log.puts capture_output { statusInputDAC(64) }
+      end
+  
+      gpio_pid = spawn("python3 gpio_roop.py #{gpio_events}")
+      Process.detach(gpio_pid)
+      puts "Launched gpio_roop.py (PID=#{gpio_pid})"
+ 
+      readline_thread = Thread.new do
+        while buf_read = Readline.readline("DAQ is running... > ", true)
+          cmd, *args = buf_read.split
+          case cmd
+          when "progress"
+            count = num_events.empty? ? 0 : num_events.pop
+            puts sprintf("Number of events: %d, progress: %.2f%%", count, count.to_f / events * 100)
+            num_events.push(count)
+          when "stop"
+            send_stop.push(true)
+            stop_requested = true
+            break
+          when "statusHV", "statusTemp", "statusInputDAC"
+            dispatch(buf_read)
+          else
+            puts "Cannot execute '#{buf_read}' while reading data..."
+          end
+        end
+      end
+  
+      read_thread = Thread.new do
+        ievents = 0
+        File.open(data_filename, 'wb') do |file|
+          @vmeEasiroc.readEvent(events) do |header, data|
+            file.write(header[:header])
+            file.write(data.pack('N*'))
+  
+            ievents += 1
+            num_events.clear unless num_events.empty?
+            num_events.push(ievents)
+  
+            if !send_stop.empty?
+              puts "DAQ stop is requested"
+              break
+            end
+          end
+        end
+      end
+  
+      read_thread.join
+      readline_thread.kill
+ 
+      read_thread.kill if read_thread.alive?
+      readline_thread.kill if readline_thread.alive?
+
+      puts "Stop DAQ #{data_filename} at #{timestamp}"
+      puts "Switching to a new run"
+
+      sleep 3
+
+      is_alive = system("ps -p #{gpio_pid} > /dev/null")
+      if is_alive
+        puts "Killing gpio_roop.py..."
+        Process.kill("TERM", gpio_pid) rescue nil
+      end
+
+      slowcontrol
+      sleep 2
+ 
+      # break after "stop" command
+      break if stop_requested
+    end
+  
+    puts "readroop finished."
+  end
+
   def fit(filename="temp", *ch) 
     status_filename = "status/" + filename + ".yml"
     status = YAML.load_file(status_filename)
@@ -572,6 +684,7 @@ class CommandDispatcher
   setHV <bias voltage>	input <bias voltage>; 0.00~90.00V to MPPC
   slowcontrol           	transmit SlowControl
   read <EventNum> <FileName>  read <EventNum> events and write to <FileName>
+  readroop <EventNum>         readroop <EventNum> events
   reset probe|readregister    reset setting
   help                        print this message
   version                     print version number
@@ -587,6 +700,7 @@ class CommandDispatcher
   - pwd
   - quit
   - read <EventNum> <FileName>
+  - readroop <EventNum>
   - reset <target>
   - scaler <on/off>
   - setHV  <bias voltage (00.00~90.00)>
@@ -770,7 +884,14 @@ Signal.trap(:TSTP){
   sleep 0.2
   exit
 }
-
+Signal.trap(:TERM){
+  puts "!!!! SIGTERM received !!!! Gracefully shutting down..."
+  commandDispatcher.setHV(0.00)
+  sleep 0.2
+  commandDispatcher.shutdownHV
+  sleep 0.2
+  exit
+}
 
 while buf = Readline.readline('> ', true)
   hist = Readline::HISTORY
