@@ -16,6 +16,8 @@ using namespace std;
 #include <iostream>
 #include <bitset>
 
+const int ScalerInt = 10;
+
 std::string formatBin(int num) {
     std::bitset<32> bits(num);
     std::string binaryStr = bits.to_string();
@@ -105,16 +107,26 @@ void hist(const string& filename)
     int evid;
     int adcH[64], adcL[64];
     int tdcL[64], tdcT[64];
+    double npe[64];
+    double time[64], width[64];
+    int scaler[64];
+    double duration;
 
-    tree->Branch("evid", &evid, "evid/I" );
-    tree->Branch("adcH",  adcH, "adcH[16]/I" );
-    tree->Branch("adcL",  adcL, "adcL[16]/I" );
-    tree->Branch("tdcL",  tdcL, "tdcL[16]/I" );
-    tree->Branch("tdcT",  tdcT, "tdcT[16]/I" );
+    tree->Branch("evid"    , &evid    , "evid/I"         );
+    tree->Branch("adcH"    ,  adcH    , "adcH[16]/I"     );
+    tree->Branch("adcL"    ,  adcL    , "adcL[16]/I"     );
+    tree->Branch("tdcL"    ,  tdcL    , "tdcL[16]/I"     );
+    tree->Branch("tdcT"    ,  tdcT    , "tdcT[16]/I"     );
+    tree->Branch("npe"     ,  npe     , "npe[16]/D"      );
+    tree->Branch("time"    ,  time    , "time[16]/D"     );
+    tree->Branch("width"   ,  width   , "width[16]/D"    );
+    tree->Branch("scaler"  ,  scaler  , "scaler[16]/I"   );
+    tree->Branch("duration", &duration, "duration/D"     );
+
 
 //    TH1F* scaler[67];
 
-    int nbin = 4096;
+//    int nbin = 4096;
     for(int i = 0; i < 64; ++i) {
 //        scaler[i] = new TH1F(Form("SCALER_%d", i),
 //                             Form("Scaler %d", i),
@@ -131,19 +143,20 @@ void hist(const string& filename)
 
 
     ifstream datFile(filename.c_str(), ios::in | ios::binary);
-    unsigned int scalerValuesArray[10][69];
+    unsigned int scalerValuesArray[ScalerInt][69];
     unsigned int events = 0;
     while(datFile) {
         for(int i=0;i<64;i++){
           adcH[i] = adcL[i] = 0;
           tdcL[i] = tdcT[i] = -9999;
+          npe[i] = time[i] = width[i] = -9999;
+          scaler[i] = -99;
         }
 
-//cout<<"EventID = "<<dec<<events<<endl;
         char headerByte[4];
         datFile.read(headerByte, 4);
         unsigned int header = getBigEndian32(headerByte);
-//cout<<"HEADER = "<<hex<<header<<endl;
+        //cout<<"HEADER = "<<hex<<header<<endl;
         bool isHeader = ((header >> 27) & 0x01) == 0x01;
         if(!isHeader) {
             std::cerr << "Frame Error" << std::endl;
@@ -157,7 +170,7 @@ void hist(const string& filename)
         datFile.read(dataBytes, dataSize * 4);
         for(size_t i = 0; i < dataSize; ++i) {
             unsigned int data = getBigEndian32(dataBytes + 4 * i);
-//cout<<"DATA = "<<formatBin(data)<<endl;
+            //cout<<"DATA = "<<formatBin(data)<<endl;
             if(isCheck(data)) {
                 std::cout << formatBin(data) <<std::endl;
                 std::cerr << "Unknown data type " << std::endl;
@@ -167,136 +180,100 @@ void hist(const string& filename)
                 int ch = (data >> 13) & 0x3f;
                 bool otr = ((data >> 12) & 0x01) != 0;
                 int value = data & 0x0fff;
-//cout<<"ADCHG = "<<hex<<data<<"  "<<dec<<ch<<"  "<<otr<<"  "<<value<<endl;
+                //cout<<"ADCHG = "<<hex<<data<<"  "<<dec<<ch<<"  "<<otr<<"  "<<value<<endl;
                 if(!otr) {
-//                    adcHigh[ch]->Fill(value);
                     adcH[ch] = value;
                 }
             }else if(isAdcLg(data)) {
                 int ch = (data >> 13) & 0x3f;
                 bool otr = ((data >> 12) & 0x01) != 0;
                 int value = data & 0x0fff;
-//cout<<"ADCLG = "<<hex<<data<<"  "<<dec<<ch<<"  "<<otr<<"  "<<value<<endl;
+                //cout<<"ADCLG = "<<hex<<data<<"  "<<dec<<ch<<"  "<<otr<<"  "<<value<<endl;
                 if(!otr) {
-//                    adcLow[ch]->Fill(value);
                     adcL[ch] = value;
                 }
             }else if(isTdcLeading(data)) {
                 int ch = (data >> 13) & 0x3f;
                 int value = data & 0x0fff;
-//cout<<"TDCL = "<<hex<<data<<"  "<<dec<<ch<<"  "<<value<<endl;
-//                tdcLeading[ch]->Fill(value);
+                //cout<<"TDCL = "<<hex<<data<<"  "<<dec<<ch<<"  "<<value<<endl;
                 tdcL[ch] = value;
             }else if(isTdcTrailing(data)) {
                 int ch = (data >> 13) & 0x3f;
                 int value = data & 0x0fff;
-//cout<<"TDCT = "<<hex<<data<<"  "<<dec<<ch<<"  "<<value<<endl;
-//                tdcTrailing[ch]->Fill(value);
+                //cout<<"TDCT = "<<hex<<data<<"  "<<dec<<ch<<"  "<<value<<endl;
                 tdcT[ch] = value;
             }else if(isScaler(data)) {
                 int ch = (data >> 14) & 0x7f;
                 int value = data & 0x3fff;
-//cout<<"Scaler = "<<hex<<data<<"  "<<dec<<ch<<"  "<<value<<endl;
+                //cout<<"Scaler = "<<hex<<data<<"  "<<dec<<ch<<"  "<<value<<endl;
                 if(ch < 68) {
                     scalerValues[ch] = value;
-                  //cout << "event:"<<events<<"/scalerValues["<<ch<<"]:"<<scalerValues[ch] << endl; 
+                    //cout << "event:"<<events<<"/scalerValues["<<ch<<"]:"<<scalerValues[ch] << endl; 
                 }else if(ch == 68) {
-                    int scalerValuesArrayIndex = events % 10;
-//cout<<"COPY "<<scalerValuesArrayIndex<<endl;
+                    int scalerValuesArrayIndex = events % ScalerInt;
+                    //cout<<"COPY "<<scalerValuesArrayIndex<<endl;
                     memcpy(scalerValuesArray[scalerValuesArrayIndex], scalerValues,
                            sizeof(scalerValues));
                 }
-#if 1
-//                if(ch == 68) {
-//                    int scalerValuesArrayIndex = events % 100;
-//                    memcpy(scalerValuesArray[scalerValuesArrayIndex], scalerValues,
-//                           sizeof(scalerValues));
-//                }
-#else
-
-                if(ch == 68) {
-                    int counterCount1MHz = scalerValues[67] & 0x1fff;
-                    int counterCount1KHz = scalerValues[68] & 0x1fff;
-
-                    // 1count = 1.0ms
-                    double counterCount = (double)counterCount1KHz + counterCount1MHz / 1000.0;
-                    // TODO
-                    // Firmwareのバグを直したら消す
-                    counterCount *= 2.0;
-                    //cout << "counterCount: " << counterCount << endl;
-                    for(size_t j = 0; j < 67; ++j) {
-                        bool ovf = ((scalerValues[j] >> 13) & 0x01) != 0;
-                        ovf = false;
-                        double scalerCount = scalerValues[j] & 0x1fff;
-                        //cout << "scalerCount: " << j << " " << scalerCount << endl;
-                        if(!ovf && scalerCount != 0) {
-                            double rate = scalerCount / counterCount; // kHz
-                            //cout << "rate: " << rate << endl;
-                            scaler[j]->Fill(rate);
-                        }
-                    }
-                    //cout << endl;
-                    //cout << endl;
-                }
-#endif
             }else {
                 int ch = (data >> 13) & 0x3f;
                 int value = data & 0x0fff;
-		std::cout << "adchg:"  << (data & 0x00680000);
-		std::cout << "adclg:"  << (data & 0x00680000);
-		std::cout << "tdcl:"   << (data & 0x00601000);
-		std::cout << "tdct:"   << (data & 0x00601000);
-		std::cout << "scaler:" << (data & 0x00600000);
-		std::cout << "data:" << data << std::endl; 
-		std::cout << "ch:" << ch << " value:" << value << std::endl;
+                std::cout << "adchg:"  << (data & 0x00680000);
+                std::cout << "adclg:"  << (data & 0x00680000);
+                std::cout << "tdcl:"   << (data & 0x00601000);
+                std::cout << "tdct:"   << (data & 0x00601000);
+                std::cout << "scaler:" << (data & 0x00600000);
+                std::cout << "data:" << data << std::endl; 
+                std::cout << "ch:" << ch << " value:" << value << std::endl;
                 std::cerr << "Unknown data type" << std::endl;
             }
         }
+
+        for(int ch = 0;ch < 64; ch++){
+          npe[ch] = adcH[ch];
+          time[ch] = tdcL[ch] * 1.0;
+          width[ch] = (tdcL[ch] - tdcT[ch]) * 1.0;
+        }
+
         evid = events;
-        tree->Fill();
 
         delete[] dataBytes;
         events++;
-	if(events%25000==0) std::cout << "reading events#:" << events << std::endl;
+	      if(events%25000==0) std::cout << "reading events#:" << events << std::endl;
 #if 1
-        if(events % 10 == 0) {
+        if(events % ScalerInt == 0) {
             unsigned int scalerValuesSum[69];
             for(int i = 0; i < 69; ++i) {
                 scalerValuesSum[i] = 0;
             }
-            for(int i = 0; i < 10; ++i) {
-		for(int j = 0; j < 69; ++j) {
+            for(int i = 0; i < ScalerInt; ++i) {
+		            for(int j = 0; j < 69; ++j) {
                     scalerValuesSum[j] += scalerValuesArray[i][j];
                 }
             }
 
             int counterCount1MHz = scalerValuesSum[67];
-            int counterCount1KHz = scalerValuesSum[68];
+            //int counterCount1KHz = scalerValuesSum[68];
 
             // 1count = 1.0ms
-            double counterCount = (double)counterCount1KHz + counterCount1MHz / 1000.0;
+            //double counterCount = (double)counterCount1KHz + counterCount1MHz / 1000.0;
+            double counterCount = counterCount1MHz / 1E+6;
+            duration = counterCount;
 	    //cout << "counterCount" << counterCount << endl;
             // TODO
             // Firmwareのバグを直したら消す
-            counterCount /= 2.0;
+            //counterCount /= 2.0;
 
             //cout << "counterCount: " << counterCount << endl;
-            for(size_t j = 0; j < 67; ++j) {
-                //cout << j << " scalerValuesSun: " << scalerValuesSum[j] << ", ";
-		bool ovf = ((scalerValuesSum[j] >> 13) & 0x01) != 0;
-                ovf = true;
+            for(size_t j = 0; j < 64; ++j) {
+                scaler[j] = scalerValuesSum[j];
                 //double scalerCount = scalerValuesSum[j] & 0x1fff;  //changed by N.CHIKUMA 2015 Oct 6
-                double scalerCount = scalerValuesSum[j] & 0xffff;
                 //cout << "scalerCount: " << scalerCount << ", ";
-                if(!ovf && scalerCount != 0) {
-                    double rate = scalerCount / counterCount;
-                    //cout << "rate: " << rate << endl;
-//                    scaler[j]->Fill(rate);
-                }
             }
             //cout << endl;
             //cout << endl;
         }
+        tree->Fill();
 #endif
     }
     tree->Write();
