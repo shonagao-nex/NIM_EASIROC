@@ -1,5 +1,5 @@
-TARGET = hist
-SRC = hist.cc
+TARGET = offline
+SRC = offline.cc
 
 all: exe
 

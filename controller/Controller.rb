@@ -18,7 +18,7 @@ class CommandDispatcher
     checkHV setInputDAC setRegister setThreshold 
     increaseHV decreaseHV initialCheck 
     muxControl slowcontrol standby fit drawScaler dsleep
-    read readroop adc tdc scaler cd pwd mode reset help version timeStamp 
+    read readloop adc tdc scaler cd pwd mode reset help version timeStamp 
     exit quit progress stop makeError ) + DIRECT_COMMANDS.map(&:to_s)
 
   
@@ -198,13 +198,36 @@ class CommandDispatcher
         @vmeEasiroc.setCh(eachnum)
         status[:InputDAC] << @vmeEasiroc.readMadc(1).round(3)
       }
-#      ch = 32..63
-#      ch.each{|eachnum|
-#        @vmeEasiroc.setCh(eachnum-32)
-#        status[:InputDAC] << @vmeEasiroc.readMadc(2).round(3)
-#      }
+      ch = 32..63
+      ch.each{|eachnum|
+        @vmeEasiroc.setCh(eachnum-32)
+        status[:InputDAC] << @vmeEasiroc.readMadc(2).round(3)
+      }
       puts status
       File.write(status_filename, status.to_yaml)
+    elsif chInt == 65
+      status_filename = filename
+
+      status = {}
+      status[:HV] = @vmeEasiroc.readMadc(3).round(3)
+      status[:current] = @vmeEasiroc.readMadc(4).round(3)
+      status[:Temp1] = @vmeEasiroc.readMadc(5).round(3)
+      status[:Temp2] = @vmeEasiroc.readMadc(0).round(3)
+      status[:InputDAC]=[]
+      ch = 0..15
+      ch.each{|eachnum|
+        @vmeEasiroc.setCh(eachnum)
+        status[:InputDAC] << @vmeEasiroc.readMadc(1).round(3)
+      }
+#      puts status
+      File.open(status_filename, 'a') do |f|
+        f.puts "===== Status Log at #{Time.now} ====="
+        f.puts "HV: #{status[:HV]} V"
+        f.puts "Current: #{status[:current]} uA"
+        input_dac_str = status[:InputDAC].map { |v| format('%.3f', v) }.join(', ')
+        f.puts "InputDAC:\n  #{input_dac_str}"
+        f.puts "\n"
+      end
     else
       puts "channel: 0~63, or 64(all channels)"
       return
@@ -511,39 +534,37 @@ class CommandDispatcher
     slowcontrol
   end
 
-  def readroop
-    puts "Start readroop (infinite monitor-mode loop). Type 'stop' to exit."
+  def readloop
+    puts "Start readloop (infinite monitor-mode loop). Type 'stop' to exit."
   
     loop do
       # Initialization
       num_events = Queue.new
       send_stop = Queue.new
-      events = 10000
-      gpio_events = events + 100
+      duration = 1200   # duration in 1 run (second)
       stop_requested = false
 
       timestamp = Time.now.strftime("%Y%m%d_%H%M%S")
       data_filename = "data/run_#{timestamp}.dat"
       log_filename  = "data/run_#{timestamp}.log"
   
-      puts "Start new DAQ loop at #{timestamp}"
-      puts "Data file: #{data_filename}"
-#      puts "Log file : #{log_filename}"
+      puts "Start new DAQ, Data file: #{data_filename}"
+      puts "Log file : #{log_filename}"
   
-      statusInputDAC(64,log_filename)
+      puts "Reading monitor ADC..."
+      4.times do
+        statusInputDAC(65, log_filename)
+        sleep 0.5
+      end
   
-#      gpio_pid = spawn("python3 gpio_roop.py #{gpio_events}")
-#      Process.detach(gpio_pid)
-#      puts "Launched gpio_roop.py (PID=#{gpio_pid})"
+      gpio_pid = spawn("python3 gpio_loop.py")
+      Process.detach(gpio_pid)
+      puts "Launched gpio_loop.py (PID=#{gpio_pid})"
  
       readline_thread = Thread.new do
         while buf_read = Readline.readline("DAQ is running... > ", true)
           cmd, *args = buf_read.split
           case cmd
-          when "progress"
-            count = num_events.empty? ? 0 : num_events.pop
-            puts sprintf("Number of events: %d, progress: %.2f%%", count, count.to_f / events * 100)
-            num_events.push(count)
           when "stop"
             send_stop.push(true)
             stop_requested = true
@@ -559,28 +580,36 @@ class CommandDispatcher
   
       read_thread = Thread.new do
         File.open(data_filename, 'wb') do |file|
+          start_time = Time.now
+          last_status_time = start_time
           ievents = 0
-          progress_bar ||= ProgressBar.create(
-            total: events,
-            format: '%p%% [%b>%i] %c %revent/s %e'
-          )
+          progress_bar ||= ProgressBar.create(total: duration, format: '%p%% [%b>%i] %t, %a')
 
-          @vmeEasiroc.readEvent(events) do |header, data|
+          @vmeEasiroc.readEvent(999_999_999) do |header, data|
             file.write(header[:header])
             file.write(data.pack('N*'))
   
             ievents += 1
-            num_events.clear unless num_events.empty?
-            num_events.push(ievents)
 
-            progress_bar.increment
-  
+            elapsed_time = Time.now - start_time
+            progress_bar.progress = [elapsed_time, duration].min.to_i
+            avg_rate = elapsed_time > 0 ? ievents / elapsed_time : 0.0
+            progress_bar.title = "#{ievents} events, #{format('%.2f', avg_rate)} event/s"
+#            progress_bar.increment
+ 
+            if Time.now - last_status_time >= 60
+              statusInputDAC(65, log_filename)
+              last_status_time = Time.now
+            end
+
             if !send_stop.empty?
               puts "DAQ stop is requested"
               break
             end
+
+            break if Time.now - start_time >= duration
           end
-          progress_bar.finish
+          progress_bar.finish if progress_bar
         end
       end
   
@@ -591,21 +620,29 @@ class CommandDispatcher
       readline_thread.kill if readline_thread.alive?
 
       puts "Stop DAQ #{data_filename} at #{timestamp}"
+
+      puts "Reading monitor ADC..."
+      4.times do
+        statusInputDAC(65, log_filename)
+        sleep 0.5
+      end
+
+      is_alive = system("ps -p #{gpio_pid} > /dev/null")
+      if is_alive
+        puts "Killing gpio_loop.py..."
+        Process.kill("TERM", gpio_pid) rescue nil
+      end
+
+      puts "Making archive..."
+      archive_filename = data_filename.sub(/\.dat$/, '.tar.gz')
+      system("tar -czf #{archive_filename} -C data #{File.basename(data_filename)}")
       puts ""
-
-      sleep 1
-
-#      is_alive = system("ps -p #{gpio_pid} > /dev/null")
-#      if is_alive
-#        puts "Killing gpio_roop.py..."
-#        Process.kill("TERM", gpio_pid) rescue nil
-#      end
 
       slowcontrol
       # break after "stop" command
       break if stop_requested
       puts "Switching now, wait a moment"
-      sleep 10
+      sleep 5
     end
   end
 
@@ -673,7 +710,7 @@ class CommandDispatcher
   setHV <bias voltage>	input <bias voltage>; 0.00~90.00V to MPPC
   slowcontrol           	transmit SlowControl
   read <EventNum> <FileName>  read <EventNum> events and write to <FileName>
-  readroop <EventNum>         readroop <EventNum> events
+  readloop                    readloop for automatic data taking
   reset probe|readregister    reset setting
   help                        print this message
   version                     print version number
@@ -689,7 +726,7 @@ class CommandDispatcher
   - pwd
   - quit
   - read <EventNum> <FileName>
-  - readroop <EventNum>
+  - readloop
   - reset <target>
   - scaler <on/off>
   - setHV  <bias voltage (00.00~90.00)>

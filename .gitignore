@@ -71,3 +71,6 @@
 *.txt
 *.log
 *.history
+*.tar
+*.gz
+*.xz
