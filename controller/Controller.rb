@@ -6,6 +6,8 @@ require 'readline'
 require 'optparse'
 require 'bundler'
 require 'bundler/setup'
+require 'csv'
+require 'yaml'
 Bundler.require
 require_relative './VME-EASIROC.rb'
 
@@ -208,31 +210,81 @@ class CommandDispatcher
     elsif chInt == 65
       status_filename = filename
 
+      hv       = format('%.3f', @vmeEasiroc.readMadc(3))
+      current  = format('%.3f', @vmeEasiroc.readMadc(4))
+      temp1    = format('%.3f', @vmeEasiroc.readMadc(5))
+      temp2    = format('%.3f', @vmeEasiroc.readMadc(0))
+
       status = {}
       status[:HV] = @vmeEasiroc.readMadc(3).round(3)
       status[:current] = @vmeEasiroc.readMadc(4).round(3)
       status[:Temp1] = @vmeEasiroc.readMadc(5).round(3)
       status[:Temp2] = @vmeEasiroc.readMadc(0).round(3)
-      status[:InputDAC]=[]
-      ch = 0..15
-      ch.each{|eachnum|
+      input_dac = []
+      (0..15).each do |eachnum|
         @vmeEasiroc.setCh(eachnum)
-        status[:InputDAC] << @vmeEasiroc.readMadc(1).round(3)
-      }
-#      puts status
-      File.open(status_filename, 'a') do |f|
-        f.puts "===== Status Log at #{Time.now} ====="
-        f.puts "HV: #{status[:HV]} V"
-        f.puts "Current: #{status[:current]} uA"
-        input_dac_str = status[:InputDAC].map { |v| format('%.3f', v) }.join(', ')
-        f.puts "InputDAC:\n  #{input_dac_str}"
-        f.puts "\n"
+        value = @vmeEasiroc.readMadc(1)
+        input_dac << format('%.3f', value)
       end
+
+      write_header = !File.exist?(status_filename)
+
+      CSV.open(status_filename, 'a') do |csv|
+        if write_header
+          header = ["timestamp", "HV(V)", "current(uA)", "T1(degC)", "T2(degC)"] + (0..15).map { |i| "IDC#{i}" }
+          csv << header
+        end
+#        row = [Time.now, status[:HV], status[:current], status[:Temp1], status[:Temp2]] + input_dac
+        row = [Time.now, hv, current, temp1, temp2] + input_dac
+        csv << row
+      end
+
     else
       puts "channel: 0~63, or 64(all channels)"
       return
     end
     @vmeEasiroc.setCh(32)
+  end
+
+  def readInputs(output_csv, data_filename, duration)
+    begin
+      time = Time.now
+      start_time_str = time.strftime("%Y-%m-%d %H:%M:%S")
+      unix_time = time.to_i
+  
+      reg_config = YAML.load_file('yaml/RegisterValue.yml')
+      inputdac_config = YAML.load_file('yaml/InputDAC.yml')
+
+      easiroc1_regs = reg_config['EASIROC1']
+
+      capacitor_hg_str  = easiroc1_regs['Capacitor HG PA Fdbck']
+      time_constant_str = easiroc1_regs['Time Constant HG Shaper']
+      dac_code_raw      = easiroc1_regs['DAC code']
+      def extract_number(val)
+        val.to_s[/\d+/].to_i
+      end
+
+      capacitor_hg  = extract_number(capacitor_hg_str)
+      time_constant = extract_number(time_constant_str)
+      dac_code      = extract_number(dac_code_raw)
+
+      input_dac_array = inputdac_config.dig('EASIROC1', 'Input 8-bit DAC')
+      first_16_input_dacs = input_dac_array[0, 16] if input_dac_array.is_a?(Array)
+  
+      csv_headers = ['FileName', 'StartTime', 'UnixTime', 'Duration(sec)', 'C_HG(fF)', 'Ctau(ns)', 'DAC'] +
+                    (0...16).map { |i| "IDC#{i}" }
+      csv_row = [data_filename, start_time_str, unix_time, duration, capacitor_hg, time_constant, dac_code] + first_16_input_dacs
+  
+      write_header = !File.exist?(output_csv) || File.zero?(output_csv)
+  
+      CSV.open(output_csv, 'a') do |csv|
+        csv << csv_headers if write_header
+        csv << csv_row
+      end
+  
+    rescue => e
+      puts "Failed to log run info to #{output_csv}: #{e.message}"
+    end
   end
 
   def checkHV(vollim=62.0, curlim=20.0, repeat=3)
@@ -534,9 +586,10 @@ class CommandDispatcher
     slowcontrol
   end
 
-  def readloop
+  def readloop(arg = nil)
     puts "Start readloop (infinite monitor-mode loop). Type 'stop' to exit."
-  
+    Dir.mkdir('data') unless Dir.exist?('data')
+
     loop do
       # Initialization
       num_events = Queue.new
@@ -547,12 +600,13 @@ class CommandDispatcher
       timestamp = Time.now.strftime("%Y%m%d_%H%M%S")
       data_filename = "data/run_#{timestamp}.dat"
       log_filename  = "data/run_#{timestamp}.log"
+      readInputs('data/runlist.csv',data_filename,duration)
   
       puts "Start new DAQ, Data file: #{data_filename}"
       puts "Log file : #{log_filename}"
   
       puts "Reading monitor ADC..."
-      4.times do
+      2.times do
         statusInputDAC(65, log_filename)
         sleep 0.5
       end
@@ -583,7 +637,7 @@ class CommandDispatcher
           start_time = Time.now
           last_status_time = start_time
           ievents = 0
-          progress_bar ||= ProgressBar.create(total: duration, format: '%p%% [%b>%i] %t, %a')
+          progress_bar = ProgressBar.create(total: duration, format: '%p%% [%b>%i] %t, %a')
 
           @vmeEasiroc.readEvent(999_999_999) do |header, data|
             file.write(header[:header])
@@ -595,18 +649,21 @@ class CommandDispatcher
             progress_bar.progress = [elapsed_time, duration].min.to_i
             avg_rate = elapsed_time > 0 ? ievents / elapsed_time : 0.0
             progress_bar.title = "#{ievents} events, #{format('%.2f', avg_rate)} event/s"
-#            progress_bar.increment
  
             if Time.now - last_status_time >= 60
               statusInputDAC(65, log_filename)
               last_status_time = Time.now
             end
 
-            if !send_stop.empty?
+            begin
+              send_stop.pop(true)
               puts "DAQ stop is requested"
               break
+            rescue ThreadError
+            # Queue is empty, continue
             end
 
+            # Switching data file after duration time
             break if Time.now - start_time >= duration
           end
           progress_bar.finish if progress_bar
@@ -614,15 +671,13 @@ class CommandDispatcher
       end
   
       read_thread.join
-      readline_thread.kill
- 
-      read_thread.kill if read_thread.alive?
       readline_thread.kill if readline_thread.alive?
-
+      read_thread.kill if read_thread.alive?
+ 
       puts "Stop DAQ #{data_filename} at #{timestamp}"
 
       puts "Reading monitor ADC..."
-      4.times do
+      2.times do
         statusInputDAC(65, log_filename)
         sleep 0.5
       end
@@ -630,13 +685,24 @@ class CommandDispatcher
       is_alive = system("ps -p #{gpio_pid} > /dev/null")
       if is_alive
         puts "Killing gpio_loop.py..."
-        Process.kill("TERM", gpio_pid) rescue nil
+        begin
+          Process.kill("TERM", gpio_pid)
+          sleep 1
+          if system("ps -p #{gpio_pid} > /dev/null")
+            puts "gpio_loop.py did not terminate, sending KILL"
+            Process.kill("KILL", gpio_pid)
+          end
+        rescue => e
+          puts "Error killing gpio_loop.py: #{e.message}"
+        end
       end
 
       puts "Making archive..."
-      archive_filename = data_filename.sub(/\.dat$/, '.tar.gz')
-      system("tar -czf #{archive_filename} -C data #{File.basename(data_filename)}")
-      puts ""
+#      archive_filename = data_filename.sub(/\.dat$/, '.tar.gz')
+#      system("tar -czf #{archive_filename} -C data #{File.basename(data_filename)}")
+      archive_filename = data_filename.sub(/\.dat$/, '.tar.xz')
+      system("tar -Jcf #{archive_filename} -C data #{File.basename(data_filename)}")
+      puts
 
       slowcontrol
       # break after "stop" command

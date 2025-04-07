@@ -3,7 +3,7 @@ EASIROC1:
         Capacitor LG PA Fdbck: 200fF
         Time Constant HG Shaper: 150ns
         Time Constant LG Shaper: 100ns
-        DAC code: 700
+        DAC code: 860
 
 EASIROC2:
         Capacitor HG PA Fdbck: same
@@ -12,9 +12,9 @@ EASIROC2:
         Time Constant LG Shaper: same
         DAC code: same
 
-High Gain Channel 1: 7
+High Gain Channel 1: -1
 High Gain Channel 2: -1
-Probe Channel 1: 7
+Probe Channel 1: -1
 Probe Channel 2: -1
 Probe 1: Out_fs
 Probe 2: Out_fs #Out_PA_HG,Out_PA_LG,Out_ssh_HG,Out_ssh_LG,Out_fs
