@@ -1,3 +1,4 @@
+// libarchive-devel is necessary
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -8,16 +9,75 @@
 #include <TTree.h>
 #include <TH1.h>
 
+#include "json.hpp"
+
+//#include <filesystem>
+//#include <vector>
+#include <cstdlib>
+//#include <cstdio>
+
+#include <archive.h>
+#include <archive_entry.h>
+
 using namespace std;
-
-#include <iostream>
-#include <bitset>
-
-#include <iostream>
-#include <bitset>
+using json = nlohmann::json;
 
 const int ScalerInt = 10;
+const int Nch = 16;
 
+bool ends_with(const std::string& value, const std::string& suffix) {
+    return value.size() >= suffix.size() &&
+           value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+bool extractDatFilesFromTarXZ(const std::string& archivePath, const std::string& outputFile)
+{
+    struct archive* a = archive_read_new();
+    archive_read_support_format_tar(a);
+    archive_read_support_filter_xz(a);
+
+    if (archive_read_open_filename(a, archivePath.c_str(), 10240) != ARCHIVE_OK) {
+        std::cerr << "Failed to open archive: " << archive_error_string(a) << std::endl;
+        return false;
+    }
+
+    struct archive_entry* entry;
+    while (archive_read_next_header(a, &entry) == ARCHIVE_OK) {
+        const char* entryName = archive_entry_pathname(entry);
+        std::string name(entryName);
+
+        if (ends_with(name, ".dat")) {
+            std::ofstream ofs(outputFile.c_str(), std::ios::binary);
+            const void* buff;
+            size_t size;
+            int64_t offset;
+
+            while (true) {
+                int r = archive_read_data_block(a, &buff, &size, &offset);
+                if (r == ARCHIVE_EOF) break;
+                if (r != ARCHIVE_OK) {
+                    std::cerr << "Read error: " << archive_error_string(a) << std::endl;
+                    return false;
+                }
+                ofs.write(reinterpret_cast<const char*>(buff), size);
+            }
+
+            ofs.close();
+            archive_read_close(a);
+            archive_read_free(a);
+            return true;
+        } else {
+            archive_read_data_skip(a);  // スキップ
+        }
+    }
+
+    archive_read_close(a);
+    archive_read_free(a);
+    std::cerr << "No .dat file found in archive." << std::endl;
+    return false;
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 std::string formatBin(int num) {
     std::bitset<32> bits(num);
     std::string binaryStr = bits.to_string();
@@ -30,7 +90,7 @@ std::string formatBin(int num) {
         formattedStr += binaryStr[i];
 
         for (int j = 0; j < SPACE_COUNT; j++) {
-            if (i == 31 - SPACE_POS[j]) {
+            if (i == static_cast<size_t>(31 - SPACE_POS[j])) {
                 formattedStr += " ";
             }
         }
@@ -38,21 +98,7 @@ std::string formatBin(int num) {
     return formattedStr;
 }
 
-//std::string formatBin(int num) {
-//    std::bitset<32> bits(num); // 32ビットのビットセット
-//    std::string binaryStr = bits.to_string(); // 文字列に変換
-//    std::string formattedStr = "";
-//
-//    for (size_t i = 0; i < binaryStr.size(); i++) {
-//        formattedStr += binaryStr[i];
-//        if ((i + 1) % 8 == 0 && i != binaryStr.size() - 1) {
-//            formattedStr += " "; // 8桁ごとにスペースを追加
-//        }
-//    }
-//    return formattedStr;
-//}
-
-
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 unsigned int getBigEndian32(const char* b)
 {
     return ((b[0] << 24) & 0xff000000) |
@@ -61,92 +107,131 @@ unsigned int getBigEndian32(const char* b)
            ((b[3] <<  0) & 0x000000ff);
 }
 
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 bool isCheck(unsigned int data)
 {
     int val = (data >> 24) & 0xff;
     return val != 0;
 }
 
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 bool isAdcHg(unsigned int data)
 {
     return (data & 0x00680000) == 0x00000000;
 }
 
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 bool isAdcLg(unsigned int data)
 {
     return (data & 0x00680000) == 0x00080000;
 }
 
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 bool isTdcLeading(unsigned int data)
 {
     return (data & 0x00601000) == 0x00201000;
 }
 
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 bool isTdcTrailing(unsigned int data)
 {
     return (data & 0x00601000) == 0x00200000;
 }
 
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 bool isScaler(unsigned int data)
 {
     return (data & 0x00600000) == 0x00400000;
 }
 
-void hist(const string& filename)
-{
-    string::size_type pos = filename.find(".dat");
-    if(pos == string::npos) {
-        cerr << filename << " is not a dat file" << endl;
-        return;
-    }
-    string rootfile_name(filename);
-    rootfile_name.replace(pos, 5, ".root");
 
-    TFile *f = new TFile(rootfile_name.c_str(), "RECREATE");
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+bool loadParamJSON(const std::string& filename, double gain[Nch], double pedestal[Nch], double timeOffset[Nch], double timeScale[Nch])
+{
+    std::ifstream infile(filename);
+    if (!infile.is_open()) {
+        std::cerr << "Failed to open " << filename << std::endl;
+        return false;
+    }
+
+    json j;
+    try {
+        infile >> j;
+    } catch (const json::parse_error& e) {
+        std::cerr << "JSON parse error: " << e.what() << std::endl;
+        return false;
+    }
+
+    struct Param {
+        const char* name;
+        double* array;
+    } params[] = {
+        {"Gain",       gain},
+        {"Pedestal",   pedestal},
+        {"TimeOffset", timeOffset},
+        {"TimeScale",  timeScale}
+    };
+
+    for (const auto& p : params) {
+        if (j.find(p.name) == j.end() || !j[p.name].is_array()) {
+            std::cerr << "Missing or invalid '" << p.name << "' array in JSON file." << std::endl;
+            return false;
+        }
+
+        const auto& arr = j[p.name];
+        if (arr.size() != Nch) {
+            std::cerr << "Expected " << Nch << " values for " << p.name
+                      << ", got " << arr.size() << std::endl;
+            return false;
+        }
+
+        for (int i = 0; i < Nch; ++i) {
+            p.array[i] = arr[i].get<double>();
+        }
+    }
+
+    return true;
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+void DecodeData(const string &input_filename, const string &output_filename, const string &param_filename)
+//void DecodeData(const string& filename)
+{
+//    string::size_type pos = filename.find(".dat");
+//    if(pos == string::npos) {
+//        cerr << filename << " is not a dat file" << endl;
+//        return;
+//    }
+//    string rootfile_name(filename);
+//    rootfile_name.replace(pos, 5, ".root");
+
+    TFile *f = new TFile(output_filename.c_str(), "RECREATE");
     TTree *tree = new TTree("tree","tree");
     int evid;
-    int adcH[64], adcL[64];
-    int tdcL[64], tdcT[64];
-    double npe[64];
-    double time[64], width[64];
-    int scaler[64];
+    int adcH[Nch], adcL[Nch];
+    int tdcL[Nch], tdcT[Nch];
+    double adcoff[Nch], npe[Nch];
+    double time[Nch], width[Nch];
+    int scaler[Nch];
     double duration;
 
     tree->Branch("evid"    , &evid    , "evid/I"         );
-    tree->Branch("adcH"    ,  adcH    , "adcH[16]/I"     );
-    tree->Branch("adcL"    ,  adcL    , "adcL[16]/I"     );
-    tree->Branch("tdcL"    ,  tdcL    , "tdcL[16]/I"     );
-    tree->Branch("tdcT"    ,  tdcT    , "tdcT[16]/I"     );
-    tree->Branch("npe"     ,  npe     , "npe[16]/D"      );
-    tree->Branch("time"    ,  time    , "time[16]/D"     );
-    tree->Branch("width"   ,  width   , "width[16]/D"    );
-    tree->Branch("scaler"  ,  scaler  , "scaler[16]/I"   );
+    tree->Branch("adcH"    ,  adcH    , Form("adcH[%d]/I",Nch)     );
+    tree->Branch("adcL"    ,  adcL    , Form("adcL[%d]/I",Nch)     );
+    tree->Branch("tdcL"    ,  tdcL    , Form("tdcL[%d]/I",Nch)     );
+    tree->Branch("tdcT"    ,  tdcT    , Form("tdcT[%d]/I",Nch)     );
+    tree->Branch("adcoff"  ,  adcoff  , Form("adcoff[%d]/D",Nch)   );
+    tree->Branch("npe"     ,  npe     , Form("npe[%d]/D",Nch)      );
+    tree->Branch("time"    ,  time    , Form("time[%d]/D",Nch)     );
+    tree->Branch("width"   ,  width   , Form("width[%d]/D",Nch)    );
+    tree->Branch("scaler"  ,  scaler  , Form("scaler[%d]/I",Nch)   );
     tree->Branch("duration", &duration, "duration/D"     );
 
-
-//    TH1F* scaler[67];
-
-//    int nbin = 4096;
-    for(int i = 0; i < 64; ++i) {
-//        scaler[i] = new TH1F(Form("SCALER_%d", i),
-//                             Form("Scaler %d", i),
-//                             //4096, 0, 5.0);
-//                             nbin, 0, 5.0*20.);
-    }
-//    scaler[64] = new TH1F("SCALER_OR32U", "Scaler OR32U",
-//                          4096, 0, 200);
-//    scaler[65] = new TH1F("SCALER_OR32L", "Scaler OR32L",
-//                          4096, 0, 200);
-//    scaler[66] = new TH1F("SCALER_OR64", "Scaler OR64",
-//                          //4096, 0, 200);
-//                          4096*10, 0, 200*10);
-
-
-    ifstream datFile(filename.c_str(), ios::in | ios::binary);
+    ifstream datFile(input_filename.c_str(), ios::in | ios::binary);
     unsigned int scalerValuesArray[ScalerInt][69];
     unsigned int events = 0;
     while(datFile) {
-        for(int i=0;i<64;i++){
+        for(int i=0;i<Nch;i++){
           adcH[i] = adcL[i] = 0;
           tdcL[i] = tdcT[i] = -9999;
           npe[i] = time[i] = width[i] = -9999;
@@ -164,6 +249,7 @@ void hist(const string& filename)
             std::exit(1);
         }
         size_t dataSize = header & 0x0fff;
+        //cout<<events<<endl;
 
         unsigned int scalerValues[69];
         char* dataBytes = new char[dataSize * 4];
@@ -181,7 +267,7 @@ void hist(const string& filename)
                 bool otr = ((data >> 12) & 0x01) != 0;
                 int value = data & 0x0fff;
                 //cout<<"ADCHG = "<<hex<<data<<"  "<<dec<<ch<<"  "<<otr<<"  "<<value<<endl;
-                if(!otr) {
+                if(!otr && ch < Nch) {
                     adcH[ch] = value;
                 }
             }else if(isAdcLg(data)) {
@@ -189,19 +275,23 @@ void hist(const string& filename)
                 bool otr = ((data >> 12) & 0x01) != 0;
                 int value = data & 0x0fff;
                 //cout<<"ADCLG = "<<hex<<data<<"  "<<dec<<ch<<"  "<<otr<<"  "<<value<<endl;
-                if(!otr) {
+                if(!otr && ch < Nch) {
                     adcL[ch] = value;
                 }
             }else if(isTdcLeading(data)) {
                 int ch = (data >> 13) & 0x3f;
                 int value = data & 0x0fff;
                 //cout<<"TDCL = "<<hex<<data<<"  "<<dec<<ch<<"  "<<value<<endl;
-                tdcL[ch] = value;
+                if(ch < Nch) {
+                  tdcL[ch] = value;
+                }
             }else if(isTdcTrailing(data)) {
                 int ch = (data >> 13) & 0x3f;
                 int value = data & 0x0fff;
                 //cout<<"TDCT = "<<hex<<data<<"  "<<dec<<ch<<"  "<<value<<endl;
-                tdcT[ch] = value;
+                if(ch < Nch) {
+                  tdcT[ch] = value;
+                }
             }else if(isScaler(data)) {
                 int ch = (data >> 14) & 0x7f;
                 int value = data & 0x3fff;
@@ -229,10 +319,17 @@ void hist(const string& filename)
             }
         }
 
-        for(int ch = 0;ch < 64; ch++){
-          npe[ch] = adcH[ch];
-          time[ch] = tdcL[ch] * 1.0;
-          width[ch] = (tdcL[ch] - tdcT[ch]) * 1.0;
+        double gain[Nch], pedestal[Nch], timeOffset[Nch], timeScale[Nch];
+
+        if (!loadParamJSON(param_filename.c_str(), gain, pedestal, timeOffset, timeScale)) {
+            return;
+        }
+
+        for(int ch = 0;ch < Nch; ch++){
+          adcoff[ch] = adcH[ch] - pedestal[ch];
+          npe[ch] = adcoff[ch] * gain[ch];
+          time[ch] = (tdcL[ch] - timeOffset[ch]) * timeScale[ch];
+          width[ch] = (tdcL[ch] - tdcT[ch]) * timeScale[ch];
         }
 
         evid = events;
@@ -265,7 +362,7 @@ void hist(const string& filename)
             //counterCount /= 2.0;
 
             //cout << "counterCount: " << counterCount << endl;
-            for(size_t j = 0; j < 64; ++j) {
+            for(size_t j = 0; j < Nch; ++j) {
                 scaler[j] = scalerValuesSum[j];
                 //double scalerCount = scalerValuesSum[j] & 0x1fff;  //changed by N.CHIKUMA 2015 Oct 6
                 //cout << "scalerCount: " << scalerCount << ", ";
@@ -281,13 +378,62 @@ void hist(const string& filename)
     f->Close();
 }
 
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 int main(int argc, char** argv)
 {
-    if(argc != 2) {
-        cerr << "hist <dat file>" << endl;
-        return -1;
-    }
-    hist(argv[1]);
 
-    return 0;
+  string input_filename  = "hoge.dat";
+  string output_filename = "hoge.root";
+  string param_filename = "hoge.json";
+  int ch;
+  extern char *optarg;
+  while((ch=getopt(argc,argv,"hf:w:p:"))!=-1){
+    switch(ch){
+    case 'f':
+      input_filename = optarg;
+      cout<<"input filename : "<<input_filename<<endl;
+      break;
+    case 'w':
+      output_filename = optarg;
+      cout<<"output filename : "<<output_filename<<endl;
+      break;
+    case 'p':
+      param_filename = optarg;
+      cout<<"parameter filename : "<<param_filename<<endl;
+      break;
+    case 'h':
+      cout<<"example) ./offline.cc -f datfile -w rootfile -p jsonfile"<<endl;
+      cout<<"-f : input filename"<<endl;
+      cout<<"-w : output filename"<<endl;
+      cout<<"-p : param filename"<<endl;
+      return 0;
+      break;
+    case '?':
+      cout<<"unknown option...."<<endl;
+      return 0;
+      break;
+    default:
+      cout<<"type -h to see help!!"<<endl;
+      return 0;
+    }
+  }
+
+   if(ends_with(input_filename, ".dat")){
+     DecodeData(input_filename, output_filename, param_filename);
+   } else if(ends_with(input_filename, ".tar.xz")){
+     std::string tempDat = input_filename + ".temp";
+     if (!extractDatFilesFromTarXZ(input_filename, tempDat)) {
+       std::cerr << "Extraction failed." << std::endl;
+       return 1;
+     }
+     DecodeData(tempDat, output_filename, param_filename);
+     std::remove(tempDat.c_str());  // 一時ファイル削除
+    } else {
+        std::cerr << "Unsupported input file type: " << input_filename << std::endl;
+        return 1;
+    }
+
+//  DecodeData(input_filename, output_filename, param_filename);
+
+  return 0;
 }

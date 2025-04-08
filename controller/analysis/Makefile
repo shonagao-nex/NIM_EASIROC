@@ -1,51 +1,27 @@
+CXX = g++
+CXXFLAGS = -std=c++11 -O2 -Wall
+
+# Get ROOT flags via root-config
+ROOTCFLAGS  = $(shell root-config --cflags)
+ROOTLIBS    = $(shell root-config --libs)
+
+# Output binary name
 TARGET = offline
-SRC = offline.cc
 
-all: exe
+# Source files
+SRCS = offline.cc
 
-OBJDIR ?= objs
-DEPDIR ?= $(OBJDIR)/dep
-LIBS = `root-config --libs`
-OPT ?= 2
-DEBUG ?= -g
-STD ?= gnu++0x
+# Libraries
+LIBS = -larchive $(ROOTLIBS)
 
-GENDEPFLAGS = -MMD -MP -MF $(DEPDIR)/$(@F).d
-CXXFLAGS += $(CXXDEFS)
-CXXFLAGS += -O$(OPT)
-CXXFLAGS += -march=native
-CXXFLAGS += $(DEBUG)
-CXXFLAGS += -Wall -Wextra
-CXXFLAGS += $(patsubst %,-I%,$(EXTRAINCDIRS))
-CXXFLAGS += -std=$(STD)
-CXXFLAGS += `root-config --cflags`
-MATHLIB = -lm
-LIBS += $(MATHLIB)
-ALL_CXXFLAGS = $(GENDEPFLAGS) $(CXXFLAGS)
-LDFLAGS = $(LIBS)
-OBJ = $(SRC:%.cc=$(OBJDIR)/%.o)
+# Default target
+all: $(TARGET)
 
-CXX := g++
-LD := g++
-REMOVE := rm -f
-REMOVEDIR := rm -rf
-
-exe: $(TARGET)
-
-$(TARGET): $(OBJ)
-	$(LD) -o $@ $^ $(LDFLAGS)
-
-$(OBJDIR)/%.o : %.cc
-	$(CXX) -c $(ALL_CXXFLAGS) $< -o $@
+$(TARGET): $(SRCS)
+	$(CXX) $(CXXFLAGS) $(ROOTCFLAGS) -o $@ $^ $(LIBS)
 
 clean:
-	-$(REMOVE) $(TARGET)
-	-$(REMOVE) $(OBJ)
-	-$(REMOVEDIR) $(DEPDIR)
-	-$(REMOVEDIR) $(OBJDIR)
+	rm -f $(TARGET)
 
-$(shell mkdir $(OBJDIR) 2>/dev/null)
--include $(shell mkdir $(DEPDIR) 2>/dev/null) $(wildcard $(DEPDIR)/*.d)
+.PHONY: all clean
 
-.PHONY: all exe
-.PRECIOUS: $(OBJ)
