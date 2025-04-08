@@ -594,13 +594,13 @@ class CommandDispatcher
       # Initialization
       num_events = Queue.new
       send_stop = Queue.new
-      duration = 1200   # duration in 1 run (second)
+      duration = 300   # duration in 1 run (second)
       stop_requested = false
 
       timestamp = Time.now.strftime("%Y%m%d_%H%M%S")
+      starttime = Time.now
       data_filename = "data/run_#{timestamp}.dat"
       log_filename  = "data/run_#{timestamp}.log"
-      readInputs('data/runlist.csv',data_filename,duration)
   
       puts "Start new DAQ, Data file: #{data_filename}"
       puts "Log file : #{log_filename}"
@@ -703,6 +703,10 @@ class CommandDispatcher
       archive_filename = data_filename.sub(/\.dat$/, '.tar.xz')
       system("tar -Jcf #{archive_filename} -C data #{File.basename(data_filename)}")
       puts
+
+      runtime = Time.now - starttime
+      runtime_str = format('%.1f', runtime)
+      readInputs('data/runlist.csv',data_filename,runtime_str)
 
       slowcontrol
       # break after "stop" command
