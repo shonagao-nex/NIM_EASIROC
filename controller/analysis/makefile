@@ -7,11 +7,11 @@ ROOTLIBS    = $(shell root-config --libs)
 OBJDIR = obj
 BINDIR = bin
 
-TARGETS = $(BINDIR)/draw $(BINDIR)/makeroot
+TARGETS = $(BINDIR)/UserAna $(BINDIR)/makeroot
 
 # Source files
 SRCS1  = makeroot.cc
-SRCS2  = draw.cc Tree.cc Hist.cc
+SRCS2  = UserAna.cc Tree.cc Hist.cc
 
 OBJS1  = $(addprefix $(OBJDIR)/, $(SRCS1:.cc=.o))
 OBJS2  = $(addprefix $(OBJDIR)/, $(SRCS2:.cc=.o))
@@ -20,7 +20,7 @@ LIBS1  = -larchive $(ROOTLIBS)
 LIBS2  = $(ROOTLIBS)
 
 TARGET1 = $(BINDIR)/makeroot
-TARGET2 = $(BINDIR)/draw
+TARGET2 = $(BINDIR)/UserAna
 
 all: $(TARGET1) $(TARGET2)
 

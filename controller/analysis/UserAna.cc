@@ -8,7 +8,6 @@
 #include <iostream>
 #include <cmath>
 
-#include "draw.h"
 #include "Tree.h"
 #include "Hist.h"
 using namespace std;
