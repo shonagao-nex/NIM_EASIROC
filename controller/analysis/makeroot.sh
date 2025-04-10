@@ -27,6 +27,5 @@ if [ ! -f "$PARAM_FILE" ]; then
   PARAM_FILE="param/default.json"
 fi
 
-# 実行
 echo "./bin/makeroot -f \"$INPUT_FILE\" -w \"$ROOT_FILE\" -p \"$PARAM_FILE\""
 ./bin/makeroot -f "$INPUT_FILE" -w "$ROOT_FILE" -p "$PARAM_FILE"

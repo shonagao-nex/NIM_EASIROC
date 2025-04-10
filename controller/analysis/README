@@ -9,7 +9,7 @@
 #
 ## Make execute files
 # $ make
-#    NOTE: libarchive-devel is necessary.
+#    NOTE: libarchive-devel, json-devel is necessary.
 #
 ## Convert rootfile
 # ./makeroot.sh input_name.dat (or .tar.xz)

@@ -9,7 +9,7 @@
 #include <TTree.h>
 #include <TH1.h>
 
-#include "json.hpp"
+#include <nlohmann/json.hpp>
 
 //#include <filesystem>
 //#include <vector>
