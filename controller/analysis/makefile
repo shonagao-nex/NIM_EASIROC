@@ -22,8 +22,7 @@ LIBS1  = -larchive $(ROOTLIBS)
 LIBS2  = $(ROOTLIBS)
 LIBS3  = $(ROOTLIBS)
 
-#TARGET1 = $(BINDIR)/makeroot
-TARGET1 = makeroot
+TARGET1 = $(BINDIR)/makeroot
 TARGET2 = $(BINDIR)/UserAna
 TARGET3 = $(BINDIR)/OnlineHist
 
