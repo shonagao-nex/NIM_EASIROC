@@ -1,0 +1,18 @@
+# This code is used to convert and analyze files from NIM_EASIRC.
+#       2025.04.09 S.Nagao
+#
+#
+# makeroot.cc : dat (or tar.xz) to rootfile converter
+# UserAna.cc  : rootfile offline analyzer
+#
+### HOW TO ###
+#
+## Make execute files
+# $ make
+#    NOTE: libarchive-devel is necessary.
+#
+## Convert rootfile
+# ./makeroot.sh input_name.dat (or .tar.xz)
+#
+## Analysis
+# ./UserAna -f input_name.root

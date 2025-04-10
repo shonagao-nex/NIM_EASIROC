@@ -14,9 +14,13 @@ public:
   int GetEntries() const;
 
   int evid;
-  int adcH[16];
-  double adcoff[16];
-  double npe[16];
+  int adcH[16], adcL[16];
+  int tdcL[16], tdcT[16];
+  double adcoff[16],npe[16];
+  double time[16], width[16];
+  int scaler[16];
+  double duration;
+
 
 private:
   TFile* file_;

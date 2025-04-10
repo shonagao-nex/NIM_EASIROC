@@ -28,5 +28,5 @@ if [ ! -f "$PARAM_FILE" ]; then
 fi
 
 # 実行
-echo "./bin/offline -f \"$INPUT_FILE\" -w \"$ROOT_FILE\" -p \"$PARAM_FILE\""
-./bin/offline -f "$INPUT_FILE" -w "$ROOT_FILE" -p "$PARAM_FILE"
+echo "./bin/makeroot -f \"$INPUT_FILE\" -w \"$ROOT_FILE\" -p \"$PARAM_FILE\""
+./bin/makeroot -f "$INPUT_FILE" -w "$ROOT_FILE" -p "$PARAM_FILE"

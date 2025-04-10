@@ -384,7 +384,7 @@ int main(int argc, char** argv)
 
   string input_filename  = "hoge.dat";
   string output_filename = "hoge.root";
-  string param_filename = "hoge.json";
+  string param_filename = "param/default.json";
   int ch;
   extern char *optarg;
   while((ch=getopt(argc,argv,"hf:w:p:"))!=-1){

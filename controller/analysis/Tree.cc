@@ -14,10 +14,17 @@ TreeReader::TreeReader(const char* filename) {
     return;
   }
 
-  tree_->SetBranchAddress("evid", &evid);
-  tree_->SetBranchAddress("adcH", adcH);
-  tree_->SetBranchAddress("adcoff", adcoff);
-  tree_->SetBranchAddress("npe", npe);
+  tree_->SetBranchAddress("evid"    , &evid    );
+  tree_->SetBranchAddress("adcH"    , adcH     );
+  tree_->SetBranchAddress("adcL"    , adcL     );
+  tree_->SetBranchAddress("tdcL"    , tdcL     );
+  tree_->SetBranchAddress("tdcT"    , tdcT     );
+  tree_->SetBranchAddress("adcoff"  , adcoff   );
+  tree_->SetBranchAddress("npe"     , npe      );
+  tree_->SetBranchAddress("time"    , time     );
+  tree_->SetBranchAddress("width"   , width    );
+  tree_->SetBranchAddress("scaler"  , scaler   );
+  tree_->SetBranchAddress("duration", &duration);
 }
 
 TreeReader::~TreeReader() {

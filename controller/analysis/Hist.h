@@ -9,14 +9,15 @@
 #include <TH2D.h>
 #include <TGraph.h>
 #include <TGraph2D.h>
+#include <TROOT.h>
+#include <iostream>
 
 class Hist {
 public:
   Hist();
 
-  // ヒストグラム追加
   void AddHist1D(const std::string& name, const std::string& title,
-                 int nbins, double xmin, double xmax);
+                 int nbins, double xmin, double xmax, int color=1, int fill=0);
 
   void AddHist2D(const std::string& name, const std::string& title,
                  int nx, double xmin, double xmax,
@@ -24,11 +25,16 @@ public:
 
   void AddGraph(const std::string& name, const std::string& title);
 
-  // テンプレート型付き取得
   template <typename T>
-  T* Get(const std::string& name);
+  T* Get(const std::string& name) const {
+    TObject* obj = gROOT->FindObject(name.c_str());
+    if (!obj) {
+      std::cerr << "Warning: object '" << name << "' not found!" << std::endl;
+      return nullptr;
+    }
+    return dynamic_cast<T*>(obj);
+  }
 
-  // ヒスト名一覧
   std::vector<std::string> GetNames() const;
 
 private:
