@@ -594,11 +594,10 @@ class CommandDispatcher
       # Initialization
       num_events = Queue.new
       send_stop = Queue.new
-      duration = 300   # duration in 1 run (second)
+      duration = 1800   # duration in 1 run (second)
       stop_requested = false
 
       timestamp = Time.now.strftime("%Y%m%d_%H%M%S")
-      starttime = Time.now
       data_filename = "data/run_#{timestamp}.dat"
       log_filename  = "data/run_#{timestamp}.log"
   
@@ -611,6 +610,7 @@ class CommandDispatcher
         sleep 0.5
       end
   
+      starttime = Time.now
       gpio_pid = spawn("python3 gpio_loop.py")
       Process.detach(gpio_pid)
       puts "Launched gpio_loop.py (PID=#{gpio_pid})"
@@ -676,6 +676,10 @@ class CommandDispatcher
  
       puts "Stop DAQ #{data_filename} at #{timestamp}"
 
+      runtime = Time.now - starttime
+      runtime_str = format('%.1f', runtime)
+      readInputs('data/runlist.csv',data_filename,runtime_str)
+
       puts "Reading monitor ADC..."
       2.times do
         statusInputDAC(65, log_filename)
@@ -698,21 +702,34 @@ class CommandDispatcher
       end
 
       puts "Making archive..."
-#      archive_filename = data_filename.sub(/\.dat$/, '.tar.gz')
-#      system("tar -czf #{archive_filename} -C data #{File.basename(data_filename)}")
       archive_filename = data_filename.sub(/\.dat$/, '.tar.xz')
       system("tar -Jcf #{archive_filename} -C data #{File.basename(data_filename)}")
       puts
 
-      runtime = Time.now - starttime
-      runtime_str = format('%.1f', runtime)
-      readInputs('data/runlist.csv',data_filename,runtime_str)
+      puts "Making rootfile and pdf...."
+      Dir.chdir("analysis") do
+        makeroot_script = "makeroot.sh"
+        online_script = "online.sh"
+      
+        if File.exist?(makeroot_script)
+          system("./#{makeroot_script} #{data_filename}")
+        else
+          puts "#{makeroot_script} not found."
+        end
+
+        root_filename = data_filename.gsub('data/', 'rootfiles/').gsub('.dat', '.root')
+        if File.exist?(online_script)
+          system("./#{online_script} #{root_filename}")
+        else
+          puts "#{online_script} not found."
+        end
+      end
 
       slowcontrol
       # break after "stop" command
       break if stop_requested
       puts "Switching now, wait a moment"
-      sleep 5
+      sleep 2
     end
   end
 
