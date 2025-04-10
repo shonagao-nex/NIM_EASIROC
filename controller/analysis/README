@@ -1,18 +1,38 @@
+############################################
 # This code is used to convert and analyze files from NIM_EASIRC.
 #       2025.04.09 S.Nagao
-#
-#
+# Developed version root_v6.30.06.
+# root_v6.32 is also available.
+#############################################
 # makeroot.cc : dat (or tar.xz) to rootfile converter
 # UserAna.cc  : rootfile offline analyzer
+# OnlineHist.cc  : Semi-Online analyzer
 #
+##############
 ### HOW TO ###
+##############
 #
-## Make execute files
+# 1. Make execute files
 # $ make
 #    NOTE: libarchive-devel, json-devel is necessary.
+#  // exe files are in the "bin" directory. If you don't have dirs, makefile make them.
+#
+# 2. Make symbolic links
+#  // link dirs are different with your environments. Indicate right dirs.
+# $ ln -s /xxx/xxx/data data        # Data dir (.dat or .tar.xz)
+# $ ln -s /xxx/xxx/logs logs        # Log dir  (.txt or .log)
+# $ ln -s /xxx/xxx/PDFs pdfs        # Online Hist etc.  (.pdf)
+# $ ln -s /xxx/xxx/root rootfiles   # rootfiles (.root)
 #
 ## Convert rootfile
-# ./makeroot.sh input_name.dat (or .tar.xz)
+# ./makeroot.sh inputname.dat (or .tar.xz)
+#  // read data file and output rootfile in rootfiles dir.
+#  // rootfile name is "rootfiles/inputname.root"
+#  // If you don't make right parameter ("param/inputname.json"), the code uses "param/default.param"
+#
+## Online Histogram
+# ./online.sh inputname.root
+#  // read rootfile and output pdf file in pdfs dir.
 #
 ## Analysis
-# ./UserAna -f input_name.root
+# ./UserAna -f inputname.root
