@@ -13,20 +13,24 @@ TARGETS = $(BINDIR)/UserAna $(BINDIR)/makeroot $(BINDIR)/OnlineHist
 SRCS1  = makeroot.cc
 SRCS2  = UserAna.cc Tree.cc Hist.cc
 SRCS3  = OnlineHist.cc Tree.cc Hist.cc
+SRCS4  = PlotLog.cc
 
 OBJS1  = $(addprefix $(OBJDIR)/, $(SRCS1:.cc=.o))
 OBJS2  = $(addprefix $(OBJDIR)/, $(SRCS2:.cc=.o))
 OBJS3  = $(addprefix $(OBJDIR)/, $(SRCS3:.cc=.o))
+OBJS4  = $(addprefix $(OBJDIR)/, $(SRCS4:.cc=.o))
 
 LIBS1  = -larchive $(ROOTLIBS)
 LIBS2  = $(ROOTLIBS)
 LIBS3  = $(ROOTLIBS)
+LIBS4  = $(ROOTLIBS)
 
 TARGET1 = $(BINDIR)/makeroot
 TARGET2 = $(BINDIR)/UserAna
 TARGET3 = $(BINDIR)/OnlineHist
+TARGET4 = $(BINDIR)/PlotLog
 
-all: $(TARGET1) $(TARGET2) $(TARGET3)
+all: $(TARGET1) $(TARGET2) $(TARGET3) $(TARGET4)
 
 $(TARGET1): $(OBJS1) | $(BINDIR)
 	$(CXX) $(CXXFLAGS) $(ROOTCFLAGS) -o $@ $^ $(LIBS1)
@@ -36,6 +40,9 @@ $(TARGET2): $(OBJS2) | $(BINDIR)
 
 $(TARGET3): $(OBJS3) | $(BINDIR)
 	$(CXX) $(CXXFLAGS) $(ROOTCFLAGS) -o $@ $^ $(LIBS3)
+
+$(TARGET4): $(OBJS4) | $(BINDIR)
+	$(CXX) $(CXXFLAGS) $(ROOTCFLAGS) -o $@ $^ $(LIBS4)
 
 $(OBJDIR)/%.o: %.cc | $(OBJDIR)
 	$(CXX) $(CXXFLAGS) $(ROOTCFLAGS) -c $< -o $@
@@ -52,4 +59,4 @@ clean:
 
 .PHONY: all clean
 
--include $(OBJS1:.o=.d) $(OBJS2:.o=.d) $(OBJS3:.o=.d)
+-include $(OBJS1:.o=.d) $(OBJS2:.o=.d) $(OBJS3:.o=.d) $(OBJS4:.o=.d)
