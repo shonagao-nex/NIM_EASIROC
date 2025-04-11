@@ -37,7 +37,7 @@ void CreateHist( Hist &hm ){
 }
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++
-void SaveHistToPDF(const Hist& hm, const string& inputfile, const string& pdffile = "hist.pdf") {
+void SaveHistToPDF(const Hist& hm, const string& inputfile, const string& goldfile, const string& pdffile = "hist.pdf") {
   gErrorIgnoreLevel = kWarning;
   gStyle->SetOptStat(1110);
   gStyle->SetStatW(0.15);
@@ -59,8 +59,12 @@ void SaveHistToPDF(const Hist& hm, const string& inputfile, const string& pdffil
   title.SetTextAlign(22);
   title.DrawLatexNDC(0.5, 0.6, "SiPM Four Symbols Online Hist");
   title.SetTextSize(0.03);
-  title.DrawLatexNDC(0.5, 0.5, inputfile.c_str());
-  title.DrawLatexNDC(0.5, 0.4, dateStr);
+  string input_str = "Data = " + inputfile;
+  title.DrawLatexNDC(0.5, 0.5, input_str.c_str());
+  string gold_str = "GOLD = " + goldfile;
+  title.SetTextColor(626);
+  title.DrawLatexNDC(0.5, 0.4, gold_str.c_str());
+  title.DrawLatexNDC(0.5, 0.3, dateStr);
   c1->Print(pdffile.c_str());
 
   c1->Clear();
@@ -104,6 +108,7 @@ void SaveHistToPDF(const Hist& hm, const string& inputfile, const string& pdffil
   for(int ch=1;ch<=12;ch++){
     c1->cd(ch)->SetMargin(0.15,0.05,0.15,0.10);
     auto hr = hm.Get<TH1D>(Form("hr_tdcl%02d", ch));
+    gPad->SetLogy();
     hr->Draw("");
     auto h = hm.Get<TH1D>(Form("h_tdcl%02d", ch));
     h->Draw("same");
@@ -116,6 +121,7 @@ void SaveHistToPDF(const Hist& hm, const string& inputfile, const string& pdffil
   for(int ch=1;ch<=12;ch++){
     c1->cd(ch)->SetMargin(0.15,0.05,0.15,0.10);
     auto hr = hm.Get<TH1D>(Form("hr_tdct%02d", ch));
+    gPad->SetLogy();
     hr->Draw("");
     auto h = hm.Get<TH1D>(Form("h_tdct%02d", ch));
     h->Draw("same");
@@ -224,7 +230,7 @@ int main(int argc, char** argv) {
     }
   } // for GetEntries
 
-  SaveHistToPDF(hm, input_filename, pdf_filename);
+  SaveHistToPDF(hm, input_filename, gold_filename, pdf_filename);
 
 //  app.Run();
   return 0;
