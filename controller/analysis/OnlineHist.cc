@@ -26,13 +26,13 @@ void CreateHist( Hist &hm ){
     hm.AddHist1D(Form("h_adcwt%02d", ch)   ,Form("ADC w/TDC(ch%02d);ADC;Counts", ch)     , 500,  600, 1600,  1);
     hm.AddHist1D(Form("h_tdcl%02d", ch)    ,Form("TDC Leading (ch%02d);TDC;Counts", ch)  , 500,    0, 1000,  1);
     hm.AddHist1D(Form("h_tdct%02d", ch)    ,Form("TDC Trailing (ch%02d);TDC;Counts", ch) , 500,    0, 1000,  1);
-    hm.AddHist1D(Form("h_scale%02d", ch)   ,Form("Scaler (ch%02d);Rate;Counts", ch)      , 200,    0, 1E+5,  1);
+    hm.AddHist1D(Form("h_scale%02d", ch)   ,Form("Scaler (ch%02d);Rate;Counts", ch)      , 200,    0, 5E+5,  1);
     hm.AddHist1D(Form("hr_adc%02d", ch)    ,Form("ADC (ch%02d);ADC;Counts", ch)          , 500,  600, 1600,626, 3001);
     hm.AddHist1D(Form("hr_ped%02d", ch)    ,Form("ADC Pedestal (ch%02d);ADC;Counts", ch) , 500,  600, 1600,626, 3001);
     hm.AddHist1D(Form("hr_adcwt%02d", ch)  ,Form("ADC w/TDC(ch%02d);ADC;Counts", ch)     , 500,  600, 1600,626, 3001);
     hm.AddHist1D(Form("hr_tdcl%02d", ch)   ,Form("TDC Leading (ch%02d);TDC;Counts", ch)  , 500,    0, 1000,626, 3001);
     hm.AddHist1D(Form("hr_tdct%02d", ch)   ,Form("TDC Trailing (ch%02d);TDC;Counts", ch) , 500,    0, 1000,626, 3001);
-    hm.AddHist1D(Form("hr_scale%02d", ch)  ,Form("Scaler (ch%02d);Rate;Counts", ch)      , 200,    0, 1E+5,626, 3001);
+    hm.AddHist1D(Form("hr_scale%02d", ch)  ,Form("Scaler (ch%02d);Rate;Counts", ch)      , 200,    0, 5E+5,626, 3001);
   }
 }
 
@@ -59,13 +59,17 @@ void SaveHistToPDF(const Hist& hm, const string& inputfile, const string& goldfi
   title.SetTextAlign(22);
   title.DrawLatexNDC(0.5, 0.6, "SiPM Four Symbols Online Hist");
   title.SetTextSize(0.03);
+  title.DrawLatexNDC(0.5, 0.5, dateStr);
   string input_str = "Data = " + inputfile;
-  title.DrawLatexNDC(0.5, 0.5, input_str.c_str());
+  title.DrawLatexNDC(0.5, 0.4, input_str.c_str());
   string gold_str = "GOLD = " + goldfile;
   title.SetTextColor(626);
-  title.DrawLatexNDC(0.5, 0.4, gold_str.c_str());
-  title.DrawLatexNDC(0.5, 0.3, dateStr);
+  title.DrawLatexNDC(0.5, 0.3, gold_str.c_str());
   c1->Print(pdffile.c_str());
+
+  TLatex legend;
+  legend.SetTextSize(0.05);
+  legend.SetTextAlign(12);
 
   c1->Clear();
   c1->Divide(3, 4, 1E-5, 1E-5);
@@ -75,6 +79,8 @@ void SaveHistToPDF(const Hist& hm, const string& inputfile, const string& goldfi
     hr->Draw("");
     auto h = hm.Get<TH1D>(Form("h_ped%02d", ch));
     h->Draw("same");
+    legend.SetTextColor(1);   legend.DrawLatexNDC(0.6, 0.8, "DATA");
+    legend.SetTextColor(626); legend.DrawLatexNDC(0.6, 0.7, "REFERENCE");
   }
   c1->Update();
   c1->Print(pdffile.c_str());
@@ -87,6 +93,8 @@ void SaveHistToPDF(const Hist& hm, const string& inputfile, const string& goldfi
     hr->Draw("");
     auto h = hm.Get<TH1D>(Form("h_adc%02d", ch));
     h->Draw("same");
+    legend.SetTextColor(1);   legend.DrawLatexNDC(0.6, 0.8, "DATA");
+    legend.SetTextColor(626); legend.DrawLatexNDC(0.6, 0.7, "REFERENCE");
   }
   c1->Update();
   c1->Print(pdffile.c_str());
@@ -99,6 +107,8 @@ void SaveHistToPDF(const Hist& hm, const string& inputfile, const string& goldfi
     hr->Draw("");
     auto h = hm.Get<TH1D>(Form("h_adcwt%02d", ch));
     h->Draw("same");
+    legend.SetTextColor(1);   legend.DrawLatexNDC(0.6, 0.8, "DATA");
+    legend.SetTextColor(626); legend.DrawLatexNDC(0.6, 0.7, "REFERENCE");
   }
   c1->Update();
   c1->Print(pdffile.c_str());
@@ -112,6 +122,8 @@ void SaveHistToPDF(const Hist& hm, const string& inputfile, const string& goldfi
     hr->Draw("");
     auto h = hm.Get<TH1D>(Form("h_tdcl%02d", ch));
     h->Draw("same");
+    legend.SetTextColor(1);   legend.DrawLatexNDC(0.6, 0.8, "DATA");
+    legend.SetTextColor(626); legend.DrawLatexNDC(0.6, 0.7, "REFERENCE");
   }
   c1->Update();
   c1->Print(pdffile.c_str());
@@ -125,6 +137,8 @@ void SaveHistToPDF(const Hist& hm, const string& inputfile, const string& goldfi
     hr->Draw("");
     auto h = hm.Get<TH1D>(Form("h_tdct%02d", ch));
     h->Draw("same");
+    legend.SetTextColor(1);   legend.DrawLatexNDC(0.6, 0.8, "DATA");
+    legend.SetTextColor(626); legend.DrawLatexNDC(0.6, 0.7, "REFERENCE");
   }
   c1->Update();
   c1->Print(pdffile.c_str());
@@ -132,11 +146,13 @@ void SaveHistToPDF(const Hist& hm, const string& inputfile, const string& goldfi
   c1->Clear();
   c1->Divide(3, 4, 1E-5, 1E-5);
   for(int ch=1;ch<=12;ch++){
-    c1->cd(ch)->SetMargin(0.15,0.05,0.15,0.10);
+    c1->cd(ch)->SetMargin(0.15,0.05,0.15,0.15);
     auto hr = hm.Get<TH1D>(Form("hr_scale%02d", ch));
     hr->Draw("");
     auto h = hm.Get<TH1D>(Form("h_scale%02d", ch));
     h->Draw("same");
+    legend.SetTextColor(1);   legend.DrawLatexNDC(0.6, 0.8, "DATA");
+    legend.SetTextColor(626); legend.DrawLatexNDC(0.6, 0.7, "REFERENCE");
   }
   c1->Update();
   c1->Print(pdffile.c_str());

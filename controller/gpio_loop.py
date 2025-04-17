@@ -27,7 +27,7 @@ GPIO.setup(VETO, GPIO.OUT)
 try:
     count = 0
     while True:
-        if count < 1000:
+        if count < 2000:
             GPIO.output(VETO, GPIO.HIGH)
         else:
             GPIO.output(VETO, GPIO.LOW)

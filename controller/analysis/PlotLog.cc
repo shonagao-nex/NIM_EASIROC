@@ -29,6 +29,7 @@ struct SummaryData {
 time_t parseTime(const std::string& timestamp) {
     struct std::tm tm {};
     strptime(timestamp.substr(0, 19).c_str(), "%Y-%m-%d %H:%M:%S", &tm);
+    tm.tm_isdst = 1; // summer time !!
     return mktime(&tm);
 }
 
@@ -64,6 +65,7 @@ SummaryData loadSummary(const std::string& inputFile, int maxLines = 2000) {
 
     std::vector<std::string> lines;
     while (std::getline(fin, line)) lines.push_back(line);
+    if( (int)lines.size() < maxLines ) maxLines = (int)lines.size() - 1;
     int startIdx = std::max(0, (int)lines.size() - maxLines);
 
     for (int i = startIdx; i < (int)lines.size(); ++i) {
@@ -95,8 +97,8 @@ void drawHVCurrentT1(const SummaryData& data, const std::string& title, const st
 
     std::map<std::string, std::pair<double, double>> y_ranges = {
         {"HV(V)", {0, 62}},
-        {"current(uA)", {0, 20}},
-        {"T1(degC)", {10, 40}},
+        {"current(uA)", {0, 50}},
+        {"T1(degC)", {20, 35}},
     };
 
     for (int i = 0; i < 3; ++i) {
@@ -104,7 +106,7 @@ void drawHVCurrentT1(const SummaryData& data, const std::string& title, const st
         TGraph* g = new TGraph(data.time.size(), &data.time[0], datas[i].data());
         g->SetLineColor(14);
         g->SetLineWidth(1);
-        g->SetTitle(labels[i].c_str());
+        g->SetTitle((labels[i] + title).c_str());
 
         g->GetXaxis()->SetTimeDisplay(1);
         g->GetXaxis()->SetTimeFormat("%m-%d %H:%M");
@@ -192,7 +194,7 @@ int main(int argc, char** argv) {
 
     gSystem->Unlink(outputPDF.c_str());
 
-    SummaryData allData = loadSummary(inputFile, 2000);
+    SummaryData allData = loadSummary(inputFile, 50000);
     if (allData.time.empty()) {
         std::cerr << "No data loaded.\n";
         return 1;
@@ -200,17 +202,17 @@ int main(int argc, char** argv) {
 
     time_t latest_time = allData.time.back();
 
-    SummaryData data12h = filterData(allData, latest_time - 12 * 3600);
-    SummaryData data3h  = filterData(allData, latest_time - 3 * 3600);
+    SummaryData data30h = filterData(allData, latest_time - 30 * 3600);
+    SummaryData data6h  = filterData(allData, latest_time - 6 * 3600);
 
     TCanvas* c1 = new TCanvas("c1", "c1", 1200, 1000);
     c1->Print((outputPDF + "[").c_str());
-    drawHVCurrentT1(allData, "HV / Current / T1 - Full", outputPDF);
-    drawHVCurrentT1(data12h, "HV / Current / T1 - Last 12h", outputPDF);
-    drawHVCurrentT1(data3h, "HV / Current / T1 - Last 3h", outputPDF);
+    drawHVCurrentT1(data6h, "Last 6h", outputPDF);
+    drawHVCurrentT1(data30h, "Last 30h", outputPDF);
+    drawHVCurrentT1(allData, "Full", outputPDF);
 //    drawIDCs(allData, "IDC Channels - Full", outputPDF);
 //    drawIDCs(data12h, "IDC Channels - Last 12h", outputPDF);
-//    drawIDCs(data3h,  "IDC Channels - Last 3h", outputPDF,true);
+//    drawIDCs(data3h,  "IDC Channels - Last 3h", outputPDF);
     c1->Print((outputPDF + "]").c_str());
 
     std::cout << "PDF saved to: " << outputPDF << std::endl;

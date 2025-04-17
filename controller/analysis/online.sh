@@ -8,7 +8,7 @@ if [ $# -ne 1 ]; then
 fi
 
 INPUT_FILE="$1"
-GOLD_FILE="rootfiles/run_20250408_194957.root"
+GOLD_FILE="rootfiles/run_20250416_235333.root"
 
 if [ ! -f "$INPUT_FILE" ]; then
   echo "Error: Input file $INPUT_FILE not found."
